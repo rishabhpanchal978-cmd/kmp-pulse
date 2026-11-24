@@ -9,6 +9,17 @@ import {
   FileText, UserMinus, Newspaper, LineChart, Table2, Wallet, RefreshCw, Radio
 } from 'lucide-react';
 
+import { createClient } from '@supabase/supabase-js'
+
+const supabase =
+  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
+    ? createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY
+      )
+    : null
+
+
 // ============================================================================
 // 1. SECURITY & SANITIZATION UTILITIES
 // ============================================================================
@@ -1901,6 +1912,46 @@ export default function App() {
       localStorage.setItem('kmp_pulse_v6_kmps', JSON.stringify(kmps));
     } catch {}
   }, [kmps]);
+
+const [cloudReady, setCloudReady] = useState(false);
+
+useEffect(() => {
+  async function loadFromCloud() {
+    if (!supabase) { setCloudReady(true); return; }
+    try {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('name, payload')
+        .in('name', ['companies', 'kmps']);
+      if (error) throw error;
+      data.forEach((row) => {
+        if (row.name === 'companies' && Array.isArray(row.payload) && row.payload.length) setCompanies(row.payload);
+        if (row.name === 'kmps' && Array.isArray(row.payload) && row.payload.length) setKmps(row.payload);
+      });
+    } catch (e) {
+      console.error('Cloud load failed', e);
+    }
+    setCloudReady(true);
+  }
+  loadFromCloud();
+}, []);
+
+useEffect(() => {
+  if (!supabase || !cloudReady) return;
+  supabase
+    .from('companies')
+    .upsert({ name: 'companies', ticker: 'STATE', payload: companies }, { onConflict: 'name' })
+    .then(({ error }) => { if (error) console.error('Cloud save failed', error); });
+}, [companies, cloudReady]);
+
+useEffect(() => {
+  if (!supabase || !cloudReady) return;
+  supabase
+    .from('companies')
+    .upsert({ name: 'kmps', ticker: 'STATE', payload: kmps }, { onConflict: 'name' })
+    .then(({ error }) => { if (error) console.error('Cloud save failed', error); });
+}, [kmps, cloudReady]);
+
 
   const toggleWatchlistAlert = (companyId, companyName) => {
     setAlertSubscriptions((prev) => {
